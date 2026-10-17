@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>智能训练棋盘</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', 'PingFang SC', sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    min-height: 100vh; color: #eee; display: flex; flex-direction: column; align-items: center;
+    padding: 20px;
+  }
+  h1 { margin-bottom: 10px; font-weight: 300; letter-spacing: 2px; }
+  .subtitle { color: #888; font-size: 14px; margin-bottom: 20px; }
+
+  .control-panel {
+    background: rgba(255,255,255,0.05);
+    border-radius: 16px; padding: 20px 30px;
+    display: flex; gap: 20px; align-items: center; flex-wrap: wrap; justify-content: center;
+    margin-bottom: 20px; backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .control-group { display: flex; flex-direction: column; gap: 6px; }
+  .control-group label { font-size: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+  select, input[type="range"], button {
+    background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+    color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 14px; cursor: pointer;
+    transition: all 0.2s;
+  }
+  button:hover { background: rgba(255,255,255,0.2); transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary { background: #e94560; border-color: #e94560; }
+  button.primary:hover { background: #ff6b6b; }
+  button.hint-active { background: #f9c74f; color: #1a1a2e; border-color: #f9c74f; }
+  input[type="range"] { width: 150px; accent-color: #e94560; }
+  .difficulty-label { font-size: 13px; color: #f9c74f; min-width: 60px; }
+
+  .eval-bar-container {
+    width: 320px; height: 24px; background: rgba(0,0,0,0.3);
+    border-radius: 12px; overflow: hidden; position: relative; margin-bottom: 4px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .eval-bar {
+    height: 100%; width: 50%; background: linear-gradient(90deg, #e94560 0%, #f9c74f 50%, #0f3460 100%);
+    transition: width 0.5s ease; position: relative;
+  }
+  .eval-bar::after {
+    content: ''; position: absolute; right: -2px; top: 0; bottom: 0; width: 4px;
+    background: #fff; box-shadow: 0 0 8px rgba(255,255,255,0.8);
+  }
+  .eval-text { text-align: center; font-size: 12px; color: #aaa; margin-bottom: 15px; }
+
+  .game-area { display: flex; gap: 30px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+  .board-wrap { position: relative; }
+  #board {
+    display: grid; grid-template-columns: repeat(8, 60px); grid-template-rows: repeat(8, 60px);
+    gap: 0; border: 3px solid rgba(255,255,255,0.3); border-radius: 8px; overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .cell {
+    width: 60px; height: 60px; display: flex; align-items: center; justify-content: center;
+    font-size: 32px; cursor: pointer; position: relative; transition: background 0.15s;
+    user-select: none;
+  }
+  .cell.light { background: #f0d9b5; }
+  .cell.dark { background: #b58863; }
+  .cell:hover { filter: brightness(1.15); }
+  .cell.selected { box-shadow: inset 0 0 0 4px #e94560; }
+  .cell.last-move { box-shadow: inset 0 0 0 3px #4cc9f0; }
+  .cell.hint { animation: pulse 1.5s infinite; }
+  .cell.hint::after {
+    content: ''; position: absolute; width: 20px; height: 20px;
+    background: rgba(249, 199, 79, 0.6); border-radius: 50%;
+    box-shadow: 0 0 15px #f9c74f;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+  }
+  .piece { transition: transform 0.2s; z-index: 2; }
+  .piece.white { text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+  .piece.black { filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6)); }
+
+  .info-panel {
+    background: rgba(255,255,255,0.05); border-radius: 16px; padding: 20px;
+    width: 280px; backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .info-panel h3 { font-size: 16px; margin-bottom: 12px; color: #f9c74f; font-weight: 400; }
+  .move-list {
+    height: 200px; overflow-y: auto; font-size: 13px; line-height: 1.8;
+    background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px;
+    margin-bottom: 15px; font-family: 'Courier New', monospace;
+  }
+  .move-list::-webkit-scrollbar { width: 6px; }
+  .move-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+  .training-tip {
+    background: rgba(233, 69, 96, 0.15); border-left: 3px solid #e94560;
+    padding: 12px; border-radius: 0 8px 8px 0; font-size: 13px; line-height: 1.6;
+    color: #ddd; min-height: 60px;
+  }
+  .training-tip strong { color: #f9c74f; }
+
+  .status {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.7); padding: 10px 24px; border-radius: 24px;
+    font-size: 14px; backdrop-filter: blur(10px);
+  }
+  .thinking { color: #f9c74f; }
+  .check { color: #e94560; font-weight: bold; }
+
+  @media (max-width: 700px) {
+    #board { grid-template-columns: repeat(8, 40px); grid-template-rows: repeat(8, 40px); }
+    .cell { width: 40px; height: 40px; font-size: 24px; }
+    .eval-bar-container { width: 260px; }
+    .info-panel { width: 260px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>♟️ 智能训练棋盘</h1>
+<p class="subtitle">从萌新到大师，每一步都有 AI 教练陪你练</p>
+
+<div class="eval-bar-container">
+  <div class="eval-bar" id="evalBar"></div>
+</div>
+<div class="eval-text" id="evalText">局势均衡 — 双方势均力敌</div>
+
+<div class="control-panel">
+  <div class="control-group">
+    <label>AI 难度</label>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <input type="range" id="difficulty" min="1" max="5" value="2" oninput="updateDifficulty(this.value)">
+      <span class="difficulty-label" id="diffLabel">入门</span>
+    </div>
+  </div>
+  <div class="control-group">
+    <label>训练模式</label>
+    <select id="trainingMode" onchange="toggleTraining(this.value)">
+      <option value="off">关闭 — 正常对局</option>
+      <option value="hint">提示模式 — 显示推荐走法</option>
+      <option value="full">教练模式 — 每步讲解思路</option>
+    </select>
+  </div>
+  <button class="primary" onclick="showHint()" id="hintBtn">💡 提示</button>
+  <button onclick="undoMove()">↩️ 悔棋</button>
+  <button onclick="newGame()">🔄 新局</button>
+</div>
+
+<div class="game-area">
+  <div class="board-wrap">
+    <div id="board"></div>
+  </div>
+  <div class="info-panel">
+    <h3>📋 对局记录</h3>
+    <div class="move-list" id="moveList"></div>
+    <h3>🎯 训练提示</h3>
+    <div class="training-tip" id="trainingTip">
+      新局开始！白方先行。<br>点击己方棋子，再点击目标位置移动。<br>支持王车易位：王向车方向移动两格即可。
+    </div>
+  </div>
+</div>
+
+<div class="status" id="status">你的回合 — 请选择棋子</div>
+
+<script>
+const PIECES = {
+  r: '♜', n: '♞', b: '♝', q: '♛', k: '♚', p: '♟',
+  R: '♖', N: '♘', B: '♗', Q: '♕', K: '♔', P: '♙'
+};
+
+let board = [];
+let selected = null;
+let turn = 'w';
+let moveHistory = [];
+let stateHistory = [];
+let gameOver = false;
+let trainingMode = 'off';
+let difficulty = 2;
+let lastMove = null;
+let castlingRights = { wK: true, wR_h: true, wR_a: true, bK: true, bR_h: true, bR_a: true };
+
+function initBoard() {
+  const setup = [
+    'rnbqkbnr',
+    'pppppppp',
+    '........',
+    '........',
+    '........',
+    '........',
+    'PPPPPPPP',
+    'RNBQKBNR'
+  ];
+  board = setup.map(row => row.split(''));
+  moveHistory = [];
+  stateHistory = [];
+  turn = 'w';
+  gameOver = false;
+  selected = null;
+  lastMove = null;
+  castlingRights = { wK: true, wR_h: true, wR_a: true, bK: true, bR_h: true, bR_a: true };
+  render();
+  updateEval();
+  document.getElementById('moveList').innerHTML = '';
+  document.getElementById('status').textContent = '你的回合 — 请选择棋子';
+  document.getElementById('trainingTip').innerHTML = '新局开始！白方先行。<br>点击己方棋子，再点击目标位置移动。<br>支持王车易位：王向车方向移动两格即可。';
+}
+
+function render() {
+  const el = document.getElementById('board');
+  el.innerHTML = '';
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell ' + ((r + c) % 2 === 0 ? 'light' : 'dark');
+      cell.dataset.r = r; cell.dataset.c = c;
+      if (selected && selected.r === r && selected.c === c) cell.classList.add('selected');
+      if (lastMove) {
+        if (lastMove.from.r === r && lastMove.from.c === c) cell.classList.add('last-move');
+        if (lastMove.to.r === r && lastMove.to.c === c) cell.classList.add('last-move');
+      }
+      const p = board[r][c];
+      if (p !== '.') {
+        const span = document.createElement('span');
+        span.className = 'piece ' + (p === p.toUpperCase() ? 'white' : 'black');
+        span.textContent = PIECES[p];
+        cell.appendChild(span);
+      }
+      cell.onclick = () => onCellClick(r, c);
+      el.appendChild(cell);
+    }
+  }
+}
+
+function onCellClick(r, c) {
+  if (gameOver || turn !== 'w') return;
+  const p = board[r][c];
+
+  if (selected) {
+    if (isLegalMove(selected.r, selected.c, r, c)) {
+      saveState();
+      makeMove(selected.r, selected.c, r, c);
+      selected = null;
+      render();
+      if (!gameOver) {
+        document.getElementById('status').innerHTML = '<span class="thinking">🤖 AI 思考中...</span>';
+        setTimeout(aiMove, 500 + Math.random() * 300);
+      }
+    } else if (p !== '.' && p === p.toUpperCase()) {
+      selected = {r, c};
+      render();
+    } else {
+      selected = null;
+      render();
+    }
+  } else if (p !== '.' && p === p.toUpperCase()) {
+    selected = {r, c};
+    render();
+  }
+}
+
+// ========== 核心：走法合法性检查 ==========
+
+function isLegalMove(fr, fc, tr, tc) {
+  if (!isPseudoLegal(fr, fc, tr, tc)) return false;
+  const p = board[fr][fc];
+  const color = p === p.toUpperCase() ? 'w' : 'b';
+  return !wouldBeInCheck(fr, fc, tr, tc, color);
+}
+
+// 伪合法：不考虑将军，只考虑棋子移动规则
+function isPseudoLegal(fr, fc, tr, tc) {
+  if (fr === tr && fc === tc) return false;
+  const p = board[fr][fc];
+  const target = board[tr][tc];
+  if (target !== '.' && ((p === p.toUpperCase()) === (target === target.toUpperCase()))) return false;
+
+  const dr = tr - fr, dc = tc - fc;
+  const type = p.toLowerCase();
+
+  switch(type) {
+    case 'p': {
+      const dir = p === 'P' ? -1 : 1;
+      const startRow = p === 'P' ? 6 : 1;
+      if (dc === 0 && target === '.') {
+        if (dr === dir) return true;
+        if (fr === startRow && dr === 2*dir && board[fr+dir][fc] === '.') return true;
+      }
+      if (Math.abs(dc) === 1 && dr === dir && target !== '.') return true;
+      return false;
+    }
+    case 'r':
+      if (fr !== tr && fc !== tc) return false;
+      return pathClear(fr, fc, tr, tc);
+    case 'n':
+      return (Math.abs(dr) === 2 && Math.abs(dc) === 1) || (Math.abs(dr) === 1 && Math.abs(dc) === 2);
+    case 'b':
+      if (Math.abs(dr) !== Math.abs(dc)) return false;
+      return pathClear(fr, fc, tr, tc);
+    case 'q':
+      if (fr !== tr && fc !== tc && Math.abs(dr) !== Math.abs(dc)) return false;
+      return pathClear(fr, fc, tr, tc);
+    case 'k': {
+      if (Math.abs(dr) <= 1 && Math.abs(dc) <= 1) return true;
+      const homeRow = p === 'K' ? 7 : 0;
+      const enemy = p === 'K' ? 'b' : 'w';
+      if (fr === homeRow && fc === 4 && tr === homeRow && Math.abs(tc - fc) === 2) {
+        if (tc === 6) {
+          const rook = board[homeRow][7];
+          if (!rook || rook.toLowerCase() !== 'r') return false;
+          if (p === 'K' && (!castlingRights.wK || !castlingRights.wR_h)) return false;
+          if (p === 'k' && (!castlingRights.bK || !castlingRights.bR_h)) return false;
+          if (board[homeRow][5] !== '.' || board[homeRow][6] !== '.') return false;
+          if (isSquareAttacked(homeRow, 4, enemy)) return false;
+          if (isSquareAttacked(homeRow, 5, enemy)) return false;
+          if (isSquareAttacked(homeRow, 6, enemy)) return false;
+          return true;
+        }
+        if (tc === 2) {
+          const rook = board[homeRow][0];
+          if (!rook || rook.toLowerCase() !== 'r') return false;
+          if (p === 'K' && (!castlingRights.wK || !castlingRights.wR_a)) return false;
+          if (p === 'k' && (!castlingRights.bK || !castlingRights.bR_a)) return false;
+          if (board[homeRow][1] !== '.' || board[homeRow][2] !== '.' || board[homeRow][3] !== '.') return false;
+          if (isSquareAttacked(homeRow, 4, enemy)) return false;
+          if (isSquareAttacked(homeRow, 3, enemy)) return false;
+          if (isSquareAttacked(homeRow, 2, enemy)) return false;
+          return true;
+        }
+      }
+      return false;
+    }
+  }
+  return false;
+}
+
+function pathClear(fr, fc, tr, tc) {
+  const dr = Math.sign(tr - fr), dc = Math.sign(tc - fc);
+  let r = fr + dr, c = fc + dc;
+  while (r !== tr || c !== tc) {
+    if (board[r][c] !== '.') return false;
+    r += dr; c += dc;
+  }
+  return true;
+}
+
+// 检查某格是否被某方攻击
+function isSquareAttacked(r, c, byColor) {
+  for (let rr = 0; rr < 8; rr++) {
+    for (let cc = 0; cc < 8; cc++) {
+      const p = board[rr][cc];
+      if (p === '.') continue;
+      if ((byColor === 'w') !== (p === p.toUpperCase())) continue;
+      const type = p.toLowerCase();
+      const dr = r - rr, dc = c - cc;
+
+      if (type === 'p') {
+        const dir = p === 'P' ? -1 : 1;
+        if (Math.abs(dc) === 1 && dr === dir) return true;
+      } else if (type === 'n') {
+        if ((Math.abs(dr) === 2 && Math.abs(dc) === 1) || (Math.abs(dr) === 1 && Math.abs(dc) === 2)) return true;
+      } else if (type === 'k') {
+        if (Math.abs(dr) <= 1 && Math.abs(dc) <= 1) return true;
+      } else if (type === 'r') {
+        if ((rr === r || cc === c) && pathClear(rr, cc, r, c)) return true;
+      } else if (type === 'b') {
+        if (Math.abs(dr) === Math.abs(dc) && pathClear(rr, cc, r, c)) return true;
+      } else if (type === 'q') {
+        if ((rr === r || cc === c || Math.abs(dr) === Math.abs(dc)) && pathClear(rr, cc, r, c)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+// 模拟走法后，检查 color 方的王是否被将军
+function wouldBeInCheck(fr, fc, tr, tc, color) {
+  const saved = board.map(row => [...row]);
+  const savedRights = {...castlingRights};
+  const p = board[fr][fc];
+
+  // 模拟走法（包括易位）
+  if (p.toLowerCase() === 'k' && Math.abs(tc - fc) === 2) {
+    board[tr][tc] = p;
+    board[fr][fc] = '.';
+    if (tc === 6) { board[fr][5] = board[fr][7]; board[fr][7] = '.'; }
+    else { board[fr][3] = board[fr][0]; board[fr][0] = '.'; }
+  } else {
+    board[tr][tc] = p;
+    board[fr][fc] = '.';
+  }
+
+  const kingChar = color === 'w' ? 'K' : 'k';
+  let kr = -1, kc = -1;
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      if (board[r][c] === kingChar) { kr = r; kc = c; break; }
+    }
+    if (kr !== -1) break;
+  }
+
+  const inCheck = isSquareAttacked(kr, kc, color === 'w' ? 'b' : 'w');
+  board = saved;
+  castlingRights = savedRights;
+  return inCheck;
+}
+
+function isInCheck(color) {
+  const kingChar = color === 'w' ? 'K' : 'k';
+  let kr = -1, kc = -1;
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      if (board[r][c] === kingChar) { kr = r; kc = c; break; }
+    }
+    if (kr !== -1) break;
+  }
+  return isSquareAttacked(kr, kc, color === 'w' ? 'b' : 'w');
+}
+
+function saveState() {
+  stateHistory.push({
+    board: board.map(row => [...row]),
+    turn: turn,
+    lastMove: lastMove ? {from: {...lastMove.from}, to: {...lastMove.to}, piece: lastMove.piece} : null,
+    castlingRights: {...castlingRights}
+  });
+}
+
+function makeMove(fr, fc, tr, tc) {
+  const p = board[fr][fc];
+  const target = board[tr][tc];
+
+  // Update castling rights
+  if (p === 'K') castlingRights.wK = false;
+  if (p === 'k') castlingRights.bK = false;
+  if (p === 'R' && fr === 7 && fc === 7) castlingRights.wR_h = false;
+  if (p === 'R' && fr === 7 && fc === 0) castlingRights.wR_a = false;
+  if (p === 'r' && fr === 0 && fc === 7) castlingRights.bR_h = false;
+  if (p === 'r' && fr === 0 && fc === 0) castlingRights.bR_a = false;
+  if (target === 'R' && tr === 7 && tc === 7) castlingRights.wR_h = false;
+  if (target === 'R' && tr === 7 && tc === 0) castlingRights.wR_a = false;
+  if (target === 'r' && tr === 0 && tc === 7) castlingRights.bR_h = false;
+  if (target === 'r' && tr === 0 && tc === 0) castlingRights.bR_a = false;
+
+  // Handle castling
+  if (p.toLowerCase() === 'k' && Math.abs(tc - fc) === 2) {
+    board[tr][tc] = p;
+    board[fr][fc] = '.';
+    if (tc === 6) { board[fr][5] = board[fr][7]; board[fr][7] = '.'; }
+    else { board[fr][3] = board[fr][0]; board[fr][0] = '.'; }
+  } else {
+    board[tr][tc] = p;
+    board[fr][fc] = '.';
+    if (p.toLowerCase() === 'p' && (tr === 0 || tr === 7)) {
+      board[tr][tc] = p === 'P' ? 'Q' : 'q';
+    }
+  }
+
+  lastMove = {from: {r: fr, c: fc}, to: {r: tr, c: tc}, piece: p};
+  moveHistory.push(lastMove);
+  addMoveToList(fr, fc, tr, tc, p);
+
+  turn = turn === 'w' ? 'b' : 'w';
+  updateEval();
+
+  if (trainingMode === 'full' && turn === 'w') {
+    generateTrainingTip();
+  }
+
+  checkGameEnd();
+}
+
+function addMoveToList(fr, fc, tr, tc, p) {
+  const list = document.getElementById('moveList');
+  const moveNum = Math.ceil(moveHistory.length / 2);
+  const moveStr = `${PIECES[p]} ${String.fromCharCode(97+fc)}${8-fr}→${String.fromCharCode(97+tc)}${8-tr}`;
+  const div = document.createElement('div');
+  const prefix = turn === 'b' ? `${moveNum}. ` : '    ';
+  div.textContent = prefix + moveStr;
+  list.appendChild(div);
+  list.scrollTop = list.scrollHeight;
+}
+
+function aiMove() {
+  if (gameOver) return;
+
+  const moves = getAllLegalMoves('b');
+  if (moves.length === 0) { checkGameEnd(); return; }
+
+  let bestMove;
+
+  if (difficulty <= 2) {
+    const weights = moves.map(m => evaluateMove(m) + Math.random() * 80);
+    bestMove = moves[weights.indexOf(Math.max(...weights))];
+  } else if (difficulty <= 4) {
+    let bestScore = -Infinity;
+    for (const m of moves) {
+      const score = simulateAndEval(m, 1);
+      if (score > bestScore) { bestScore = score; bestMove = m; }
+    }
+  } else {
+    let bestScore = -Infinity;
+    for (const m of moves) {
+      const score = simulateAndEval(m, 2);
+      if (score > bestScore) { bestScore = score; bestMove = m; }
+    }
+  }
+
+  saveState();
+  makeMove(bestMove.fr, bestMove.fc, bestMove.tr, bestMove.tc);
+  render();
+
+  const inCheck = isInCheck('w');
+  if (inCheck) {
+    document.getElementById('status').innerHTML = '<span class="check">⚠️ 将军！请解将</span>';
+  } else {
+    document.getElementById('status').textContent = '你的回合 — 请选择棋子';
+  }
+
+  if (trainingMode === 'hint') {
+    setTimeout(showHint, 500);
+  }
+}
+
+// 获取所有合法走法（自动过滤掉会导致自己被将军的走法）
+function getAllLegalMoves(color) {
+  const legal = [];
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      if (p === '.') continue;
+      if ((color === 'w') !== (p === p.toUpperCase())) continue;
+      for (let tr = 0; tr < 8; tr++) {
+        for (let tc = 0; tc < 8; tc++) {
+          if (isLegalMove(r, c, tr, tc)) legal.push({fr: r, fc: c, tr, tc, piece: p});
+        }
+      }
+    }
+  }
+  return legal;
+}
+
+function evaluateMove(m) {
+  const pieceValues = {p: 10, n: 30, b: 30, r: 50, q: 90, k: 0};
+  let score = 0;
+  const target = board[m.tr][m.tc];
+  if (target !== '.') score += (pieceValues[target.toLowerCase()] || 0) * 3;
+  if (m.tr >= 2 && m.tr <= 5 && m.tc >= 2 && m.tc <= 5) score += 8;
+  if (m.piece.toLowerCase() === 'k' && Math.abs(m.tc - m.fc) === 2) score += 25;
+  return score;
+}
+
+function simulateAndEval(m, depth) {
+  const savedBoard = board.map(r => [...r]);
+  const savedRights = {...castlingRights};
+
+  board[m.tr][m.tc] = board[m.fr][m.fc];
+  board[m.fr][m.fc] = '.';
+  if (m.piece.toLowerCase() === 'k' && Math.abs(m.tc - m.fc) === 2) {
+    if (m.tc === 6) { board[m.fr][5] = board[m.fr][7]; board[m.fr][7] = '.'; }
+    else { board[m.fr][3] = board[m.fr][0]; board[m.fr][0] = '.'; }
+  }
+
+  let score = evaluateBoard('b');
+  if (depth > 1) {
+    const oppMoves = getAllLegalMoves('w');
+    if (oppMoves.length > 0) {
+      let worst = Infinity;
+      for (const om of oppMoves) {
+        const s = evaluateMove(om);
+        if (s < worst) worst = s;
+      }
+      score -= worst * 0.3;
+    }
+  }
+
+  board = savedBoard;
+  castlingRights = savedRights;
+  return score;
+}
+
+function evaluateBoard(forColor) {
+  const pieceValues = {p: 10, n: 30, b: 32, r: 50, q: 90, k: 0};
+  let score = 0;
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      if (p === '.') continue;
+      const v = pieceValues[p.toLowerCase()] || 0;
+      if ((forColor === 'w') === (p === p.toUpperCase())) score += v;
+      else score -= v;
+    }
+  }
+  return score;
+}
+
+function showHint() {
+  if (gameOver || turn !== 'w') return;
+  const moves = getAllLegalMoves('w');
+  if (moves.length === 0) return;
+
+  let best = moves[0], bestScore = -Infinity;
+  for (const m of moves) {
+    const s = evaluateMove(m) + simulateAndEval(m, 1) + Math.random() * 5;
+    if (s > bestScore) { bestScore = s; best = m; }
+  }
+
+  const cells = document.querySelectorAll('.cell');
+  cells.forEach(c => c.classList.remove('hint'));
+  const fromIdx = best.fr * 8 + best.fc;
+  const toIdx = best.tr * 8 + best.tc;
+  cells[fromIdx].classList.add('hint');
+  cells[toIdx].classList.add('hint');
+
+  const tip = document.getElementById('trainingTip');
+  const target = board[best.tr][best.tc];
+  let reason = '';
+  if (best.piece.toLowerCase() === 'k' && Math.abs(best.tc - best.fc) === 2) {
+    reason = '建议王车易位，把王转移到安全位置！';
+  } else if (target !== '.') {
+    reason = `可以吃掉对方的 ${PIECES[target]}！`;
+  } else if (isInCheck('w')) {
+    reason = '这是解将的走法！';
+  } else if (best.tr <= 3) {
+    reason = '向前推进，争取空间优势。';
+  } else {
+    reason = '调整位置，准备下一步攻势。';
+  }
+
+  tip.innerHTML = `<strong>💡 AI 提示：</strong>建议走 ${PIECES[best.piece]} ${String.fromCharCode(97+best.fc)}${8-best.fr}→${String.fromCharCode(97+best.tc)}${8-best.tr}<br>${reason}`;
+
+  document.getElementById('hintBtn').classList.add('hint-active');
+  setTimeout(() => {
+    document.querySelectorAll('.cell').forEach(c => c.classList.remove('hint'));
+    document.getElementById('hintBtn').classList.remove('hint-active');
+  }, 2500);
+}
+
+function generateTrainingTip() {
+  const tip = document.getElementById('trainingTip');
+  const inCheck = isInCheck('w');
+  const threats = findThreats('w');
+  const opportunities = findOpportunities('w');
+
+  let text = `<strong>🎯 局势分析：</strong><br>`;
+  if (inCheck) {
+    text += `<span style="color:#e94560;font-weight:bold;">⚠️ 你被将军了！必须解将！</span><br>`;
+  }
+  if (threats.length > 0 && !inCheck) {
+    text += `⚠️ 注意：你的 ${PIECES[threats[0].piece]} 正受到威胁！考虑保护或撤离。<br>`;
+  }
+  if (opportunities.length > 0) {
+    text += `✨ 机会：你可以吃掉对方的 ${PIECES[opportunities[0].target]}！<br>`;
+  }
+  if (castlingRights.wK && !inCheck) {
+    text += `🏰 提示：你的王还未易位，考虑尽早王车易位确保王的安全。<br>`;
+  }
+  if (!inCheck && threats.length === 0 && opportunities.length === 0 && !castlingRights.wK) {
+    text += `当前局势平稳，尝试控制中心或发展棋子。`;
+  }
+  tip.innerHTML = text;
+}
+
+function findThreats(color) {
+  const threats = [];
+  const oppMoves = getAllLegalMoves(color === 'w' ? 'b' : 'w');
+  for (const m of oppMoves) {
+    const target = board[m.tr][m.tc];
+    if (target !== '.' && (color === 'w') === (target === target.toUpperCase())) {
+      threats.push({piece: target, by: m.piece});
+    }
+  }
+  return threats;
+}
+
+function findOpportunities(color) {
+  const ops = [];
+  const moves = getAllLegalMoves(color);
+  for (const m of moves) {
+    const target = board[m.tr][m.tc];
+    if (target !== '.' && (color === 'w') !== (target === target.toUpperCase())) {
+      ops.push({target, by: m.piece});
+    }
+  }
+  return ops;
+}
+
+function updateEval() {
+  const score = evaluateBoard('w');
+  const max = 120;
+  let pct = 50 + (score / max) * 50;
+  pct = Math.max(5, Math.min(95, pct));
+  document.getElementById('evalBar').style.width = pct + '%';
+
+  let text = '';
+  if (score > 30) text = '⚪ 白方明显优势 — 保持攻势！';
+  else if (score > 10) text = '⚪ 白方稍优 — 继续施压';
+  else if (score > -10) text = '➖ 局势均衡 — 双方势均力敌';
+  else if (score > -30) text = '⚫ 黑方稍优 — 注意防守';
+  else text = '⚫ 黑方明显优势 — 寻找反击机会';
+  document.getElementById('evalText').textContent = text;
+}
+
+function undoMove() {
+  if (stateHistory.length < 2 || gameOver) {
+    document.getElementById('trainingTip').innerHTML = '<strong>无法悔棋</strong><br>没有可撤销的走法。';
+    return;
+  }
+  stateHistory.pop();
+  const state = stateHistory.pop();
+  board = state.board;
+  turn = state.turn;
+  lastMove = state.lastMove;
+  castlingRights = state.castlingRights;
+
+  moveHistory.pop();
+  moveHistory.pop();
+
+  const list = document.getElementById('moveList');
+  if (list.lastChild) list.removeChild(list.lastChild);
+  if (list.lastChild) list.removeChild(list.lastChild);
+
+  selected = null;
+  gameOver = false;
+  render();
+  updateEval();
+  document.getElementById('status').textContent = '你的回合 — 请选择棋子';
+  document.getElementById('trainingTip').innerHTML = '<strong>↩️ 已悔棋</strong><br>回到上一步，重新思考。';
+}
+
+function newGame() {
+  initBoard();
+}
+
+function checkGameEnd() {
+  let wk = false, bk = false;
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      if (board[r][c] === 'K') wk = true;
+      if (board[r][c] === 'k') bk = true;
+    }
+  }
+  if (!wk) { endGame('黑方胜利！'); return; }
+  if (!bk) { endGame('白方胜利！🎉'); return; }
+
+  const moves = getAllLegalMoves(turn);
+  if (moves.length === 0) {
+    if (isInCheck(turn)) {
+      endGame(turn === 'w' ? '将杀！黑方胜利！' : '将杀！白方胜利！🎉');
+    } else {
+      endGame('逼和！双方平局');
+    }
+  }
+}
+
+function endGame(msg) {
+  gameOver = true;
+  document.getElementById('status').innerHTML = '<span style="color:#e94560;font-size:16px;">🏁 ' + msg + '</span>';
+  document.getElementById('trainingTip').innerHTML = `<strong>对局结束</strong><br>${msg}<br>点击「新局」再来一盘！`;
+}
+
+function updateDifficulty(v) {
+  difficulty = parseInt(v);
+  const labels = ['萌新', '入门', '进阶', '高手', '大师'];
+  document.getElementById('diffLabel').textContent = labels[v-1];
+}
+
+function toggleTraining(v) {
+  trainingMode = v;
+  const tip = document.getElementById('trainingTip');
+  if (v === 'off') {
+    tip.innerHTML = '训练模式已关闭。全凭实力对战！';
+  } else if (v === 'hint') {
+    tip.innerHTML = '<strong>提示模式已开启</strong><br>点击 💡 提示按钮，AI 会推荐当前最佳走法。';
+  } else {
+    tip.innerHTML = '<strong>教练模式已开启</strong><br>每步结束后，AI 会自动分析局势并给出建议。';
+  }
+}
+
+initBoard();
+</script>
+</body>
+</html>
