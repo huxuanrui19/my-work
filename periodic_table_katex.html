@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交互式化学元素周期表</title>
+    <!-- KaTeX CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #f5f7fa;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+        .toolbar {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 56px;
+            background: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            z-index: 100;
+            padding: 0 20px;
+        }
+        .toolbar-label { font-size: 15px; color: #555; font-weight: 500; }
+        .zoom-btn {
+            width: 36px; height: 36px;
+            border: none; background: #e8ecf1;
+            border-radius: 8px; cursor: pointer;
+            font-size: 20px; color: #333;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+        }
+        .zoom-btn:hover { background: #d0d8e3; }
+        .zoom-slider {
+            width: 200px; height: 6px;
+            -webkit-appearance: none; appearance: none;
+            background: #e0e5ec; border-radius: 3px;
+            outline: none; cursor: pointer;
+        }
+        .zoom-slider::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 18px; height: 18px;
+            background: #4a90d9; border-radius: 50%;
+            cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .zoom-slider::-moz-range-thumb {
+            width: 18px; height: 18px;
+            background: #4a90d9; border-radius: 50%;
+            cursor: pointer; border: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .zoom-value { font-size: 14px; color: #666; min-width: 45px; text-align: center; }
+        .reset-btn {
+            padding: 8px 16px; border: none;
+            background: #4a90d9; color: white;
+            border-radius: 8px; cursor: pointer;
+            font-size: 14px; font-weight: 500;
+            transition: all 0.2s;
+        }
+        .reset-btn:hover { background: #357abd; }
+        .main-container {
+            margin-top: 56px; padding: 20px;
+            display: flex; justify-content: center;
+            min-height: calc(100vh - 56px);
+        }
+        .periodic-table-wrapper {
+            transform-origin: top center;
+            transition: transform 0.3s ease;
+        }
+        .periodic-table {
+            display: grid;
+            grid-template-columns: repeat(18, 72px);
+            grid-template-rows: repeat(7, 88px);
+            gap: 4px;
+            margin-bottom: 16px;
+        }
+        .element-card {
+            width: 72px; height: 88px;
+            border-radius: 8px; padding: 4px;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: space-between;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 2px solid transparent;
+            position: relative; user-select: none;
+        }
+        .element-card:hover {
+            transform: translateY(-4px) scale(1.08);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+            z-index: 10; border-color: rgba(0,0,0,0.15);
+        }
+        .element-card .atomic-number {
+            font-size: 11px; font-weight: 600;
+            color: rgba(0,0,0,0.6); align-self: flex-start; line-height: 1;
+        }
+        .element-card .symbol {
+            font-size: 26px; font-weight: 700;
+            color: #222; line-height: 1; margin-top: 2px;
+        }
+        .element-card .name {
+            font-size: 12px; color: #444;
+            line-height: 1; font-weight: 500;
+        }
+        .element-card .mass {
+            font-size: 10px; color: rgba(0,0,0,0.5); line-height: 1;
+        }
+        .star-marker {
+            width: 72px; height: 88px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 28px; color: #888; font-weight: 300;
+        }
+        .cat-nonmetal { background: #b3e0ff; }
+        .cat-noble { background: #d4b3ff; }
+        .cat-alkali { background: #ffb3b3; }
+        .cat-alkaline { background: #ffd4a3; }
+        .cat-transition { background: #fff5b3; }
+        .cat-post-transition { background: #b3ffb3; }
+        .cat-metalloid { background: #b3fff0; }
+        .cat-halogen { background: #ffb3d4; }
+        .cat-lanthanide { background: #c8e6c9; }
+        .cat-actinide { background: #fff9c4; }
+        .series-section { margin-top: 8px; }
+        .series-label {
+            font-size: 14px; color: #666;
+            margin-bottom: 6px; font-weight: 500; padding-left: 4px;
+        }
+        .series-row {
+            display: grid;
+            grid-template-columns: repeat(14, 72px);
+            gap: 4px; margin-bottom: 10px;
+        }
+        .legend {
+            margin-top: 20px;
+            display: flex; flex-wrap: wrap;
+            gap: 12px 20px; justify-content: center;
+            padding: 16px; background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .legend-item {
+            display: flex; align-items: center;
+            gap: 6px; font-size: 13px; color: #555;
+        }
+        .legend-color {
+            width: 18px; height: 18px;
+            border-radius: 4px; border: 1px solid rgba(0,0,0,0.1);
+        }
+        .detail-panel {
+            position: fixed;
+            top: 56px; right: -420px;
+            width: 400px;
+            height: calc(100vh - 56px);
+            background: #fff;
+            box-shadow: -4px 0 20px rgba(0,0,0,0.12);
+            z-index: 200;
+            transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow-y: auto; padding: 28px;
+        }
+        .detail-panel.active { right: 0; }
+        .detail-overlay {
+            position: fixed;
+            top: 56px; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.25);
+            z-index: 150;
+            opacity: 0; visibility: hidden;
+            transition: all 0.3s;
+        }
+        .detail-overlay.active { opacity: 1; visibility: visible; }
+        .detail-close {
+            position: absolute;
+            top: 16px; right: 16px;
+            width: 36px; height: 36px;
+            border: none; background: #f0f2f5;
+            border-radius: 50%; cursor: pointer;
+            font-size: 20px; color: #666;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+        }
+        .detail-close:hover { background: #e0e3e8; color: #333; }
+        .detail-header {
+            display: flex; align-items: center;
+            gap: 16px; margin-bottom: 24px;
+            padding-bottom: 20px; border-bottom: 2px solid #f0f2f5;
+        }
+        .detail-symbol-box {
+            width: 80px; height: 80px;
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 36px; font-weight: 700;
+            color: #222; flex-shrink: 0;
+        }
+        .detail-title { flex: 1; }
+        .detail-title h2 { font-size: 24px; color: #222; margin-bottom: 4px; }
+        .detail-title .detail-symbol-text {
+            font-size: 16px; color: #666; font-weight: 500;
+        }
+        .detail-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px; margin-bottom: 24px;
+        }
+        .detail-info-item {
+            background: #f8f9fb;
+            padding: 12px 16px; border-radius: 10px;
+        }
+        .detail-info-item .label {
+            font-size: 12px; color: #888;
+            margin-bottom: 4px;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .detail-info-item .value {
+            font-size: 16px; color: #333; font-weight: 600;
+        }
+        .detail-section { margin-bottom: 24px; }
+        .detail-section h3 {
+            font-size: 15px; color: #444;
+            margin-bottom: 10px;
+            padding-bottom: 6px; border-bottom: 1px solid #eee;
+        }
+        .detail-section p {
+            font-size: 14px; color: #555; line-height: 1.7;
+        }
+        .detail-reaction {
+            background: #f0f7ff;
+            border-left: 4px solid #4a90d9;
+            padding: 14px 18px;
+            border-radius: 0 10px 10px 0;
+            font-size: 15px;
+            color: #2c5282;
+            line-height: 1.6;
+            min-height: 48px;
+            display: flex;
+            align-items: center;
+        }
+        .detail-reaction .katex {
+            font-size: 1.15em;
+        }
+        .detail-category-tag {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px; font-weight: 600;
+            margin-top: 8px;
+        }
+        .page-title { text-align: center; margin-bottom: 16px; }
+        .page-title h1 { font-size: 22px; color: #333; font-weight: 600; }
+        .empty-cell { width: 72px; height: 88px; }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <span class="toolbar-label">缩放:</span>
+        <button class="zoom-btn" id="zoomOut">−</button>
+        <input type="range" class="zoom-slider" id="zoomSlider" min="30" max="150" value="55">
+        <button class="zoom-btn" id="zoomIn">+</button>
+        <span class="zoom-value" id="zoomValue">55%</span>
+        <button class="reset-btn" id="resetZoom">复位</button>
+    </div>
+    <div class="main-container">
+        <div class="periodic-table-wrapper" id="tableWrapper">
+            <div class="page-title"><h1>化学元素周期表</h1></div>
+            <div class="periodic-table" id="mainTable"></div>
+            <div class="series-section">
+                <div class="series-label">镧系元素（* 标记处）</div>
+                <div class="series-row" id="lanthanideRow"></div>
+            </div>
+            <div class="series-section">
+                <div class="series-label">锕系元素（* 标记处）</div>
+                <div class="series-row" id="actinideRow"></div>
+            </div>
+            <div class="legend">
+                <div class="legend-item"><div class="legend-color cat-nonmetal"></div><span>非金属</span></div>
+                <div class="legend-item"><div class="legend-color cat-noble"></div><span>稀有气体</span></div>
+                <div class="legend-item"><div class="legend-color cat-alkali"></div><span>碱金属</span></div>
+                <div class="legend-item"><div class="legend-color cat-alkaline"></div><span>碱土金属</span></div>
+                <div class="legend-item"><div class="legend-color cat-transition"></div><span>过渡金属</span></div>
+                <div class="legend-item"><div class="legend-color cat-post-transition"></div><span>后过渡金属</span></div>
+                <div class="legend-item"><div class="legend-color cat-metalloid"></div><span>类金属</span></div>
+                <div class="legend-item"><div class="legend-color cat-halogen"></div><span>卤素</span></div>
+                <div class="legend-item"><div class="legend-color cat-lanthanide"></div><span>镧系</span></div>
+                <div class="legend-item"><div class="legend-color cat-actinide"></div><span>锕系</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="detail-overlay" id="detailOverlay"></div>
+    <div class="detail-panel" id="detailPanel">
+        <button class="detail-close" id="detailClose">×</button>
+        <div id="detailContent"></div>
+    </div>
+
+    <!-- KaTeX JS -->
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous"></script>
+    <!-- mhchem extension -->
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/mhchem.min.js" crossorigin="anonymous"></script>
+
+<script>
+const elements = [{z:1,symbol:"H",name:"氢",mass:"1.008",category:"nonmetal",desc:"最轻的元素，宇宙中最丰富的元素。无色无味的气体，极易燃烧。",reaction:"\\ce{2H2 + O2 -> 2H2O}"},{z:2,symbol:"He",name:"氦",mass:"4.003",category:"noble",desc:"惰性气体，第二轻的元素。用于气球填充和低温冷却。",reaction:"该元素化学性质极不活泼，无常见反应方程式"},{z:3,symbol:"Li",name:"锂",mass:"6.941",category:"alkali",desc:"最轻的金属，银白色，在空气中迅速氧化。用于电池制造。",reaction:"\\ce{2Li + 2H2O -> 2LiOH + H2^}"},{z:4,symbol:"Be",name:"铍",mass:"9.012",category:"alkaline",desc:"轻而坚硬的银白色金属，有毒。用于航空航天合金。",reaction:"\\ce{Be + 2HCl -> BeCl2 + H2^}"},{z:5,symbol:"B",name:"硼",mass:"10.811",category:"metalloid",desc:"黑色或银灰色固体，硬度高，用于玻璃和陶瓷工业。",reaction:"\\ce{4B + 3O2 -> 2B2O3}"},{z:6,symbol:"C",name:"碳",mass:"12.011",category:"nonmetal",desc:"生命的基础元素，存在形式多样：石墨、金刚石、富勒烯等。",reaction:"\\ce{C + O2 -> CO2}"},{z:7,symbol:"N",name:"氮",mass:"14.007",category:"nonmetal",desc:"空气中含量最多的气体，无色无味，是蛋白质和核酸的组成元素。",reaction:"\\ce{N2 + 3H2 <=> 2NH3}"},{z:8,symbol:"O",name:"氧",mass:"15.999",category:"nonmetal",desc:"地壳中含量最多的元素，支持燃烧和呼吸。",reaction:"\\ce{2H2 + O2 -> 2H2O}"},{z:9,symbol:"F",name:"氟",mass:"18.998",category:"halogen",desc:"最活泼的非金属元素，淡黄色气体，剧毒。",reaction:"\\ce{2F2 + 2H2O -> 4HF + O2}"},{z:10,symbol:"Ne",name:"氖",mass:"20.180",category:"noble",desc:"惰性气体，通电时发出红光，用于霓虹灯。",reaction:"该元素化学性质极不活泼，无常见反应方程式"},{z:11,symbol:"Na",name:"钠",mass:"22.990",category:"alkali",desc:"银白色软金属，与水剧烈反应。人体必需元素。",reaction:"\\ce{2Na + 2H2O -> 2NaOH + H2^}"},{z:12,symbol:"Mg",name:"镁",mass:"24.305",category:"alkaline",desc:"银白色轻金属，燃烧时发出耀眼白光。",reaction:"\\ce{2Mg + O2 -> 2MgO}"},{z:13,symbol:"Al",name:"铝",mass:"26.982",category:"post-transition",desc:"地壳中含量最丰富的金属，银白色，耐腐蚀。",reaction:"\\ce{4Al + 3O2 -> 2Al2O3}"},{z:14,symbol:"Si",name:"硅",mass:"28.086",category:"metalloid",desc:"半导体材料的基础，地壳中含量第二多的元素。",reaction:"\\ce{Si + O2 -> SiO2}"},{z:15,symbol:"P",name:"磷",mass:"30.974",category:"nonmetal",desc:"存在白磷、红磷等同素异形体，是生物体重要组成。",reaction:"\\ce{4P + 5O2 -> 2P2O5}"},{z:16,symbol:"S",name:"硫",mass:"32.065",category:"nonmetal",desc:"黄色固体，有特殊气味，用于制造硫酸和橡胶。",reaction:"\\ce{S + O2 -> SO2}"},{z:17,symbol:"Cl",name:"氯",mass:"35.453",category:"halogen",desc:"黄绿色有毒气体，用于消毒和制造漂白剂。",reaction:"\\ce{Cl2 + H2O -> HCl + HClO}"},{z:18,symbol:"Ar",name:"氩",mass:"39.948",category:"noble",desc:"空气中含量最多的惰性气体，用于焊接保护气。",reaction:"该元素化学性质极不活泼，无常见反应方程式"},{z:19,symbol:"K",name:"钾",mass:"39.098",category:"alkali",desc:"银白色软金属，与水剧烈反应，人体必需元素。",reaction:"\\ce{2K + 2H2O -> 2KOH + H2^}"},{z:20,symbol:"Ca",name:"钙",mass:"40.078",category:"alkaline",desc:"银白色金属，骨骼和牙齿的主要成分。",reaction:"\\ce{Ca + 2H2O -> Ca(OH)2 + H2^}"},{z:21,symbol:"Sc",name:"钪",mass:"44.956",category:"transition",desc:"银白色稀土金属，用于航空航天合金。",reaction:"\\ce{2Sc + 6HCl -> 2ScCl3 + 3H2^}"},{z:22,symbol:"Ti",name:"钛",mass:"47.867",category:"transition",desc:"银白色高强度金属，耐腐蚀，用于航空和医疗植入物。",reaction:"\\ce{Ti + 2Cl2 -> TiCl4}"},{z:23,symbol:"V",name:"钒",mass:"50.942",category:"transition",desc:"银灰色金属，用于制造高强度合金钢。",reaction:"\\ce{2V + 5Cl2 -> 2VCl5}"},{z:24,symbol:"Cr",name:"铬",mass:"51.996",category:"transition",desc:"银白色金属，硬度高，耐腐蚀，用于电镀。",reaction:"\\ce{2Cr + 3Cl2 -> 2CrCl3}"},{z:25,symbol:"Mn",name:"锰",mass:"54.938",category:"transition",desc:"银白色金属，用于钢铁冶炼和干电池。",reaction:"\\ce{3Mn + 2O2 -> Mn3O4}"},{z:26,symbol:"Fe",name:"铁",mass:"55.845",category:"transition",desc:"最常见的金属，银白色，是钢铁工业的基础。",reaction:"\\ce{3Fe + 2O2 -> Fe3O4}"},{z:27,symbol:"Co",name:"钴",mass:"58.933",category:"transition",desc:"银白色磁性金属，用于制造永磁体和催化剂。",reaction:"\\ce{2Co + 3Cl2 -> 2CoCl3}"},{z:28,symbol:"Ni",name:"镍",mass:"58.693",category:"transition",desc:"银白色磁性金属，耐腐蚀，用于不锈钢和电池。",reaction:"\\ce{Ni + Cl2 -> NiCl2}"},{z:29,symbol:"Cu",name:"铜",mass:"63.546",category:"transition",desc:"紫红色金属，导电导热性优良，人类最早使用的金属之一。",reaction:"\\ce{2Cu + O2 -> 2CuO}"},{z:30,symbol:"Zn",name:"锌",mass:"65.380",category:"transition",desc:"银白色金属，用于镀锌防锈和干电池。",reaction:"\\ce{Zn + 2HCl -> ZnCl2 + H2^}"},{z:31,symbol:"Ga",name:"镓",mass:"69.723",category:"post-transition",desc:"银白色金属，熔点低（29.76°C），可用于半导体。",reaction:"\\ce{4Ga + 3O2 -> 2Ga2O3}"},{z:32,symbol:"Ge",name:"锗",mass:"72.640",category:"metalloid",desc:"灰白色半导体材料，用于光纤和红外光学器件。",reaction:"\\ce{Ge + 2Cl2 -> GeCl4}"},{z:33,symbol:"As",name:"砷",mass:"74.922",category:"metalloid",desc:"灰色类金属，有毒，用于半导体和杀虫剂。",reaction:"\\ce{4As + 3O2 -> 2As2O3}"},{z:34,symbol:"Se",name:"硒",mass:"78.960",category:"nonmetal",desc:"灰色非金属，用于光电池和复印机。",reaction:"\\ce{Se + O2 -> SeO2}"},{z:35,symbol:"Br",name:"溴",mass:"79.904",category:"halogen",desc:"红棕色液体，唯一在常温下呈液态的非金属元素。",reaction:"\\ce{Br2 + H2O -> HBr + HBrO}"},{z:36,symbol:"Kr",name:"氪",mass:"83.798",category:"noble",desc:"无色惰性气体，用于高强度照明和激光。",reaction:"该元素化学性质极不活泼，无常见反应方程式"},{z:37,symbol:"Rb",name:"铷",mass:"85.468",category:"alkali",desc:"银白色软金属，化学性质极活泼。",reaction:"\\ce{2Rb + 2H2O -> 2RbOH + H2^}"},{z:38,symbol:"Sr",name:"锶",mass:"87.620",category:"alkaline",desc:"银白色金属，燃烧时发出亮红色火焰，用于焰火。",reaction:"\\ce{Sr + 2H2O -> Sr(OH)2 + H2^}"},{z:39,symbol:"Y",name:"钇",mass:"88.906",category:"transition",desc:"银白色稀土金属，用于制造高温超导材料。",reaction:"\\ce{2Y + 6HCl -> 2YCl3 + 3H2^}"},{z:40,symbol:"Zr",name:"锆",mass:"91.224",category:"transition",desc:"银白色高熔点金属，耐腐蚀，用于核反应堆。",reaction:"\\ce{Zr + 2Cl2 -> ZrCl4}"},{z:41,symbol:"Nb",name:"铌",mass:"92.906",category:"transition",desc:"银灰色金属，高熔点，用于超导合金。",reaction:"\\ce{2Nb + 5Cl2 -> 2NbCl5}"},{z:42,symbol:"Mo",name:"钼",mass:"95.960",category:"transition",desc:"银白色高熔点金属，用于特种钢和催化剂。",reaction:"\\ce{2Mo + 3O2 -> 2MoO3}"},{z:43,symbol:"Tc",name:"锝",mass:"98.000",category:"transition",desc:"银灰色放射性金属，第一个人工合成元素。",reaction:"\\ce{4Tc + 7O2 -> 2Tc2O7}"},{z:44,symbol:"Ru",name:"钌",mass:"101.070",category:"transition",desc:"银白色稀有金属，用于催化剂和电子工业。",reaction:"\\ce{Ru + 2Cl2 -> RuCl4}"},{z:45,symbol:"Rh",name:"铑",mass:"102.906",category:"transition",desc:"银白色贵金属，用于汽车催化转化器。",reaction:"\\ce{2Rh + 3Cl2 -> 2RhCl3}"},{z:46,symbol:"Pd",name:"钯",mass:"106.420",category:"transition",desc:"银白色贵金属，能吸收大量氢气，用于催化剂。",reaction:"\\ce{Pd + Cl2 -> PdCl2}"},{z:47,symbol:"Ag",name:"银",mass:"107.868",category:"transition",desc:"银白色贵金属，导电导热性最强，用于珠宝和电子工业。",reaction:"\\ce{2Ag + S -> Ag2S}"},{z:48,symbol:"Cd",name:"镉",mass:"112.411",category:"transition",desc:"银白色金属，有毒，用于电池和颜料。",reaction:"\\ce{Cd + Cl2 -> CdCl2}"},{z:49,symbol:"In",name:"铟",mass:"114.818",category:"post-transition",desc:"银白色软金属，用于液晶显示器和半导体。",reaction:"\\ce{4In + 3O2 -> 2In2O3}"},{z:50,symbol:"Sn",name:"锡",mass:"118.710",category:"post-transition",desc:"银白色金属，熔点低，用于焊料和镀层。",reaction:"\\ce{Sn + 2HCl -> SnCl2 + H2^}"},{z:51,symbol:"Sb",name:"锑",mass:"121.760",category:"metalloid",desc:"银灰色类金属，用于合金和阻燃剂。",reaction:"\\ce{4Sb + 3O2 -> 2Sb2O3}"},{z:52,symbol:"Te",name:"碲",mass:"127.600",category:"metalloid",desc:"银白色类金属，用于太阳能电池和合金。",reaction:"\\ce{Te + O2 -> TeO2}"},{z:53,symbol:"I",name:"碘",mass:"126.905",category:"halogen",desc:"紫黑色固体，易升华，用于消毒和摄影。",reaction:"\\ce{I2 + H2 -> 2HI}"},{z:54,symbol:"Xe",name:"氙",mass:"131.293",category:"noble",desc:"无色惰性气体，用于高强度照明和麻醉剂。",reaction:"该元素化学性质极不活泼，无常见反应方程式"},{z:55,symbol:"Cs",name:"铯",mass:"132.905",category:"alkali",desc:"金黄色软金属，化学性质最活泼的金属之一。",reaction:"\\ce{2Cs + 2H2O -> 2CsOH + H2^}"},{z:56,symbol:"Ba",name:"钡",mass:"137.327",category:"alkaline",desc:"银白色金属，燃烧时发出绿色火焰，用于焰火。",reaction:"\\ce{Ba + 2H2O -> Ba(OH)2 + H2^}"},{z:57,symbol:"La",name:"镧",mass:"138.905",category:"lanthanide",desc:"银白色稀土金属，用于光学玻璃和催化剂。",reaction:"\\ce{2La + 6HCl -> 2LaCl3 + 3H2^}"},{z:72,symbol:"Hf",name:"铪",mass:"178.490",category:"transition",desc:"银灰色高熔点金属，用于核反应堆控制棒。",reaction:"\\ce{Hf + 2Cl2 -> HfCl4}"},{z:73,symbol:"Ta",name:"钽",mass:"180.948",category:"transition",desc:"蓝灰色高熔点金属，耐腐蚀，用于电子工业。",reaction:"\\ce{2Ta + 5Cl2 -> 2TaCl5}"},{z:74,symbol:"W",name:"钨",mass:"183.840",category:"transition",desc:"银白色金属，熔点最高（3422°C），用于灯丝。",reaction:"\\ce{W + 3Cl2 -> WCl6}"},{z:75,symbol:"Re",name:"铼",mass:"186.207",category:"transition",desc:"银白色金属，熔点极高，用于催化剂和高温合金。",reaction:"\\ce{2Re + 7O2 -> 2Re2O7}"},{z:76,symbol:"Os",name:"锇",mass:"190.230",category:"transition",desc:"蓝灰色金属，密度最大的天然元素（22.59 g/cm³）。",reaction:"\\ce{Os + 2Cl2 -> OsCl4}"},{z:77,symbol:"Ir",name:"铱",mass:"192.217",category:"transition",desc:"银白色贵金属，耐腐蚀性最强，用于笔尖和火花塞。",reaction:"\\ce{2Ir + 3Cl2 -> 2IrCl3}"},{z:78,symbol:"Pt",name:"铂",mass:"195.084",category:"transition",desc:"银白色贵金属，化学性质稳定，用于催化剂和珠宝。",reaction:"\\ce{Pt + 2Cl2 -> PtCl4}"},{z:79,symbol:"Au",name:"金",mass:"196.967",category:"transition",desc:"金黄色贵金属，延展性最好，化学性质极稳定。",reaction:"\\ce{2Au + 3Cl2 -> 2AuCl3}"},{z:80,symbol:"Hg",name:"汞",mass:"200.590",category:"transition",desc:"银白色液态金属，唯一在常温下呈液态的金属，有毒。",reaction:"\\ce{Hg + S -> HgS}"},{z:81,symbol:"Tl",name:"铊",mass:"204.383",category:"post-transition",desc:"银白色软金属，剧毒，用于电子工业。",reaction:"\\ce{4Tl + O2 -> 2Tl2O}"},{z:82,symbol:"Pb",name:"铅",mass:"207.200",category:"post-transition",desc:"蓝灰色软金属，有毒，用于蓄电池和防辐射。",reaction:"\\ce{2Pb + O2 -> 2PbO}"},{z:83,symbol:"Bi",name:"铋",mass:"208.980",category:"post-transition",desc:"银白色金属，有微弱放射性，用于医药和合金。",reaction:"\\ce{4Bi + 3O2 -> 2Bi2O3}"},{z:84,symbol:"Po",name:"钋",mass:"209.000",category:"metalloid",desc:"银灰色放射性元素，居里夫人发现，毒性极强。",reaction:"\\ce{Po + O2 -> PoO2}"},{z:85,symbol:"At",name:"砹",mass:"210.000",category:"halogen",desc:"放射性卤素，极不稳定，半衰期短。",reaction:"\\ce{2At + H2 -> 2HAt}"},{z:86,symbol:"Rn",name:"氡",mass:"222.000",category:"noble",desc:"无色放射性惰性气体，是肺癌的第二大诱因。",reaction:"该元素化学性质极不活泼，无常见反应方程式"},{z:87,symbol:"Fr",name:"钫",mass:"223.000",category:"alkali",desc:"放射性金属，极不稳定，自然界中含量极少。",reaction:"\\ce{2Fr + 2H2O -> 2FrOH + H2^}"},{z:88,symbol:"Ra",name:"镭",mass:"226.000",category:"alkaline",desc:"银白色放射性金属，居里夫人发现，曾用于夜光涂料。",reaction:"\\ce{Ra + 2H2O -> Ra(OH)2 + H2^}"},{z:89,symbol:"Ac",name:"锕",mass:"227.000",category:"actinide",desc:"银白色放射性金属，锕系元素的首个元素。",reaction:"\\ce{2Ac + 6HCl -> 2AcCl3 + 3H2^}"},{z:104,symbol:"Rf",name:"𬬻",mass:"267.000",category:"transition",desc:"人工合成超重元素，半衰期极短。",reaction:"该元素为人工合成的超重元素，半衰期极短，化学性质尚未充分研究"},{z:105,symbol:"Db",name:"𬭊",mass:"268.000",category:"transition",desc:"人工合成超重元素，以美国物理学家命名。",reaction:"该元素为人工合成的超重元素，半衰期极短，化学性质尚未充分研究"},{z:106,symbol:"Sg",name:"𬭳",mass:"269.000",category:"transition",desc:"人工合成超重元素，以科学家西博格命名。",reaction:"该元素为人工合成的超重元素，半衰期极短，化学性质尚未充分研究"},{z:107,symbol:"Bh",name:"𬭛",mass:"270.000",category:"transition",desc:"人工合成超重元素，极不稳定。",reaction:"该元素为人工合成的超重元素，半衰期极短，化学性质尚未充分研究"},{z:108,symbol:"Hs",name:"𬭶",mass:"269.000",category:"transition",desc:"人工合成超重元素，以德国黑森州命名。",reaction:"该元素为人工合成的超重元素，半衰期极短，化学性质尚未充分研究"},{z:109,symbol:"Mt",name:"鿏",mass:"278.000",category:"transition",desc:"人工合成超重元素，极不稳定。",reaction:"该元素为人工合成的超重元素，半衰期极短，化学性质尚未充分研究"},{z:110,symbol:"Ds",name:"𫟼",mass:"281.000",category:"transition",desc:"人工合成超重元素，以德国城市达姆施塔特命名。",reaction:"该元素为人工合成的超重元素，半衰期极短，化学性质尚未充分研究"},{z:111,symbol:"Rg",name:"𬬭",mass:"281.000",category:"transition",desc:"人工合成超重元素，以科学家伦琴命名。",reaction:"该元素为人工合成的超重元素，半衰期极短，化学性质尚未充分研究"},{z:112,symbol:"Cn",name:"鎶",mass:"285.000",category:"transition",desc:"人工合成超重元素，以科学家哥白尼命名。",reaction:"该元素为人工合成的超重元素，半衰期极短，化学性质尚未充分研究"},{z:113,symbol:"Nh",name:"鿭",mass:"286.000",category:"post-transition",desc:"人工合成超重元素，以日本命名。",reaction:"该元素为人工合成的超重元素，半衰期极短，化学性质尚未充分研究"},{z:114,symbol:"Fl",name:"𫓧",mass:"289.000",category:"post-transition",desc:"人工合成超重元素，以俄罗斯实验室命名。",reaction:"该元素为人工合成的超重元素，半衰期极短，化学性质尚未充分研究"},{z:115,symbol:"Mc",name:"镆",mass:"289.000",category:"post-transition",desc:"人工合成超重元素，以莫斯科地区命名。",reaction:"该元素为人工合成的超重元素，半衰期极短，化学性质尚未充分研究"},{z:116,symbol:"Lv",name:"𫟷",mass:"293.000",category:"post-transition",desc:"人工合成超重元素，以科学家利弗莫尔命名。",reaction:"该元素为人工合成的超重元素，半衰期极短，化学性质尚未充分研究"},{z:117,symbol:"Ts",name:"鿬",mass:"294.000",category:"halogen",desc:"人工合成超重元素，极不稳定。",reaction:"该元素为人工合成的超重元素，半衰期极短，化学性质尚未充分研究"},{z:118,symbol:"Og",name:"鿫",mass:"294.000",category:"noble",desc:"人工合成超重元素，以科学家奥加涅相命名。",reaction:"该元素为人工合成的超重元素，半衰期极短，化学性质尚未充分研究"}];
+const lanthanides = [{z:58,symbol:"Ce",name:"铈",mass:"140.116",category:"lanthanide",desc:"银白色稀土金属，用于打火石和催化剂。",reaction:"\\ce{Ce + O2 -> CeO2}"},{z:59,symbol:"Pr",name:"镨",mass:"140.908",category:"lanthanide",desc:"银白色稀土金属，用于永磁体和玻璃着色。",reaction:"\\ce{4Pr + 3O2 -> 2Pr2O3}"},{z:60,symbol:"Nd",name:"钕",mass:"144.242",category:"lanthanide",desc:"银白色稀土金属，用于制造最强永磁体。",reaction:"\\ce{4Nd + 3O2 -> 2Nd2O3}"},{z:61,symbol:"Pm",name:"钷",mass:"145.000",category:"lanthanide",desc:"银白色放射性稀土金属，用于核电池。",reaction:"\\ce{4Pm + 3O2 -> 2Pm2O3}"},{z:62,symbol:"Sm",name:"钐",mass:"150.360",category:"lanthanide",desc:"银白色稀土金属，用于永磁体和核反应堆。",reaction:"\\ce{4Sm + 3O2 -> 2Sm2O3}"},{z:63,symbol:"Eu",name:"铕",mass:"151.964",category:"lanthanide",desc:"银白色稀土金属，用于荧光粉和核反应堆。",reaction:"\\ce{4Eu + 3O2 -> 2Eu2O3}"},{z:64,symbol:"Gd",name:"钆",mass:"157.250",category:"lanthanide",desc:"银白色稀土金属，用于核磁共振造影剂。",reaction:"\\ce{4Gd + 3O2 -> 2Gd2O3}"},{z:65,symbol:"Tb",name:"铽",mass:"158.925",category:"lanthanide",desc:"银白色稀土金属，用于磁光存储和荧光粉。",reaction:"\\ce{4Tb + 3O2 -> 2Tb2O3}"},{z:66,symbol:"Dy",name:"镝",mass:"162.500",category:"lanthanide",desc:"银白色稀土金属，用于永磁体和核反应堆。",reaction:"\\ce{4Dy + 3O2 -> 2Dy2O3}"},{z:67,symbol:"Ho",name:"钬",mass:"164.930",category:"lanthanide",desc:"银白色稀土金属，用于激光和核反应堆。",reaction:"\\ce{4Ho + 3O2 -> 2Ho2O3}"},{z:68,symbol:"Er",name:"铒",mass:"167.259",category:"lanthanide",desc:"银白色稀土金属，用于光纤放大器和激光。",reaction:"\\ce{4Er + 3O2 -> 2Er2O3}"},{z:69,symbol:"Tm",name:"铥",mass:"168.934",category:"lanthanide",desc:"银白色稀土金属，用于激光和X射线设备。",reaction:"\\ce{4Tm + 3O2 -> 2Tm2O3}"},{z:70,symbol:"Yb",name:"镱",mass:"173.054",category:"lanthanide",desc:"银白色稀土金属，用于原子钟和激光。",reaction:"\\ce{4Yb + 3O2 -> 2Yb2O3}"},{z:71,symbol:"Lu",name:"镥",mass:"174.967",category:"lanthanide",desc:"银白色稀土金属，用于催化剂和核医学。",reaction:"\\ce{4Lu + 3O2 -> 2Lu2O3}"}];
+const actinides = [{z:90,symbol:"Th",name:"钍",mass:"232.038",category:"actinide",desc:"银白色放射性金属，可用于核燃料。",reaction:"\\ce{Th + O2 -> ThO2}"},{z:91,symbol:"Pa",name:"镤",mass:"231.036",category:"actinide",desc:"银灰色放射性金属，极稀有。",reaction:"\\ce{4Pa + 5O2 -> 2Pa2O5}"},{z:92,symbol:"U",name:"铀",mass:"238.029",category:"actinide",desc:"银白色放射性金属，最重要的核燃料。",reaction:"\\ce{U + O2 -> UO2}"},{z:93,symbol:"Np",name:"镎",mass:"237.000",category:"actinide",desc:"银白色放射性金属，第一个人工合成的超铀元素。",reaction:"\\ce{Np + O2 -> NpO2}"},{z:94,symbol:"Pu",name:"钚",mass:"244.000",category:"actinide",desc:"银白色放射性金属，用于核武器和核电池。",reaction:"\\ce{Pu + O2 -> PuO2}"},{z:95,symbol:"Am",name:"镅",mass:"243.000",category:"actinide",desc:"银白色放射性金属，用于烟雾探测器。",reaction:"\\ce{4Am + 3O2 -> 2Am2O3}"},{z:96,symbol:"Cm",name:"锔",mass:"247.000",category:"actinide",desc:"银白色放射性金属，以居里夫妇命名。",reaction:"\\ce{Cm + O2 -> CmO2}"},{z:97,symbol:"Bk",name:"锫",mass:"247.000",category:"actinide",desc:"银白色放射性金属，以美国伯克利命名。",reaction:"\\ce{Bk + O2 -> BkO2}"},{z:98,symbol:"Cf",name:"锎",mass:"251.000",category:"actinide",desc:"银白色放射性金属，用于中子源。",reaction:"\\ce{Cf + O2 -> CfO2}"},{z:99,symbol:"Es",name:"锿",mass:"252.000",category:"actinide",desc:"银白色放射性金属，以爱因斯坦命名。",reaction:"\\ce{Es + O2 -> EsO2}"},{z:100,symbol:"Fm",name:"镄",mass:"257.000",category:"actinide",desc:"银白色放射性金属，以费米命名。",reaction:"\\ce{Fm + O2 -> FmO2}"},{z:101,symbol:"Md",name:"钔",mass:"258.000",category:"actinide",desc:"银白色放射性金属，以门捷列夫命名。",reaction:"\\ce{Md + O2 -> MdO2}"},{z:102,symbol:"No",name:"锘",mass:"259.000",category:"actinide",desc:"银白色放射性金属，以诺贝尔命名。",reaction:"\\ce{No + O2 -> NoO2}"},{z:103,symbol:"Lr",name:"铹",mass:"262.000",category:"actinide",desc:"银白色放射性金属，以劳伦斯命名。",reaction:"\\ce{Lr + O2 -> LrO2}"}];
+
+const categoryNames = {
+    nonmetal: "非金属", noble: "稀有气体", alkali: "碱金属",
+    alkaline: "碱土金属", transition: "过渡金属",
+    "post-transition": "后过渡金属", metalloid: "类金属",
+    halogen: "卤素", lanthanide: "镧系元素", actinide: "锕系元素"
+};
+
+const positions = {
+    1:[1,1], 2:[1,18],
+    3:[2,1], 4:[2,2], 5:[2,13], 6:[2,14], 7:[2,15], 8:[2,16], 9:[2,17], 10:[2,18],
+    11:[3,1], 12:[3,2], 13:[3,13], 14:[3,14], 15:[3,15], 16:[3,16], 17:[3,17], 18:[3,18],
+    19:[4,1], 20:[4,2], 21:[4,3], 22:[4,4], 23:[4,5], 24:[4,6], 25:[4,7], 26:[4,8], 27:[4,9], 28:[4,10], 29:[4,11], 30:[4,12], 31:[4,13], 32:[4,14], 33:[4,15], 34:[4,16], 35:[4,17], 36:[4,18],
+    37:[5,1], 38:[5,2], 39:[5,3], 40:[5,4], 41:[5,5], 42:[5,6], 43:[5,7], 44:[5,8], 45:[5,9], 46:[5,10], 47:[5,11], 48:[5,12], 49:[5,13], 50:[5,14], 51:[5,15], 52:[5,16], 53:[5,17], 54:[5,18],
+    55:[6,1], 56:[6,2], 57:[6,3], 72:[6,4], 73:[6,5], 74:[6,6], 75:[6,7], 76:[6,8], 77:[6,9], 78:[6,10], 79:[6,11], 80:[6,12], 81:[6,13], 82:[6,14], 83:[6,15], 84:[6,16], 85:[6,17], 86:[6,18],
+    87:[7,1], 88:[7,2], 89:[7,3], 104:[7,4], 105:[7,5], 106:[7,6], 107:[7,7], 108:[7,8], 109:[7,9], 110:[7,10], 111:[7,11], 112:[7,12], 113:[7,13], 114:[7,14], 115:[7,15], 116:[7,16], 117:[7,17], 118:[7,18]
+};
+
+// 将 \ce{...} 中的数字还原为 Unicode 下标，用于 KaTeX 加载失败时的回退显示
+function restoreSubscripts(text) {
+    if (!text.startsWith('\\ce{')) return text;
+    let s = text.slice(5, -1); // 去掉 \ce{ 和 }
+    const subs = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉'];
+    // 简单的数字→下标转换（仅对化学式中的数字）
+    let result = '';
+    let i = 0;
+    while (i < s.length) {
+        let ch = s[i];
+        // 元素符号后紧跟的数字转为下标
+        if (i > 0 && /[A-Za-z]/.test(s[i-1]) && /\d/.test(ch)) {
+            result += subs[parseInt(ch)];
+        } else if (i > 0 && /[)\]]/.test(s[i-1]) && /\d/.test(ch)) {
+            result += subs[parseInt(ch)];
+        } else {
+            result += ch;
+        }
+        i++;
+    }
+    return result;
+}
+
+function createCard(el) {
+    return `<div class="element-card cat-${el.category}" data-z="${el.z}">
+        <span class="atomic-number">${el.z}</span>
+        <span class="symbol">${el.symbol}</span>
+        <span class="name">${el.name}</span>
+        <span class="mass">${el.mass}</span>
+    </div>`;
+}
+function createStar() { return `<div class="star-marker">*</div>`; }
+function createEmpty() { return `<div class="empty-cell"></div>`; }
+
+function buildMainTable() {
+    const table = document.getElementById('mainTable');
+    const grid = [];
+    for (let r = 0; r < 7; r++) { grid[r] = []; for (let c = 0; c < 18; c++) grid[r][c] = null; }
+    elements.forEach(el => { const pos = positions[el.z]; if (pos) grid[pos[0]-1][pos[1]-1] = el; });
+    grid[5][2] = 'star'; grid[6][2] = 'star';
+    let html = '';
+    for (let r = 0; r < 7; r++) {
+        for (let c = 0; c < 18; c++) {
+            const cell = grid[r][c];
+            if (cell === 'star') html += createStar();
+            else if (cell) html += createCard(cell);
+            else html += createEmpty();
+        }
+    }
+    table.innerHTML = html;
+}
+
+function buildSeries() {
+    document.getElementById('lanthanideRow').innerHTML = lanthanides.map(el => createCard(el)).join('');
+    document.getElementById('actinideRow').innerHTML = actinides.map(el => createCard(el)).join('');
+}
+
+function openDetail(el) {
+    const panel = document.getElementById('detailPanel');
+    const overlay = document.getElementById('detailOverlay');
+    const content = document.getElementById('detailContent');
+
+    // 判断反应方程式类型
+    const isChemEquation = el.reaction.startsWith('\\ce{');
+
+    content.innerHTML = `
+        <div class="detail-header">
+            <div class="detail-symbol-box cat-${el.category}">${el.symbol}</div>
+            <div class="detail-title">
+                <h2>${el.name}</h2>
+                <div class="detail-symbol-text">${el.symbol} · 原子序数 ${el.z}</div>
+                <span class="detail-category-tag cat-${el.category}">${categoryNames[el.category]}</span>
+            </div>
+        </div>
+        <div class="detail-info-grid">
+            <div class="detail-info-item"><div class="label">原子序数</div><div class="value">${el.z}</div></div>
+            <div class="detail-info-item"><div class="label">相对原子质量</div><div class="value">${el.mass}</div></div>
+            <div class="detail-info-item"><div class="label">元素符号</div><div class="value">${el.symbol}</div></div>
+            <div class="detail-info-item"><div class="label">元素分类</div><div class="value">${categoryNames[el.category]}</div></div>
+        </div>
+        <div class="detail-section">
+            <h3>化学性质</h3>
+            <p>${el.desc}</p>
+        </div>
+        <div class="detail-section">
+            <h3>常见反应方程式</h3>
+            <div class="detail-reaction" id="reactionBox"></div>
+        </div>
+    `;
+
+    // 渲染反应方程式
+    const reactionBox = document.getElementById('reactionBox');
+    if (isChemEquation && typeof katex !== 'undefined') {
+        try {
+            katex.render(el.reaction, reactionBox, {
+                throwOnError: false,
+                trust: true,
+                displayMode: false
+            });
+        } catch (e) {
+            // KaTeX 渲染失败，回退到纯文本（还原下标）
+            reactionBox.textContent = restoreSubscripts(el.reaction);
+        }
+    } else {
+        // KaTeX 未加载或纯文本，直接显示
+        reactionBox.textContent = isChemEquation ? restoreSubscripts(el.reaction) : el.reaction;
+    }
+
+    panel.classList.add('active');
+    overlay.classList.add('active');
+}
+
+function closeDetail() {
+    document.getElementById('detailPanel').classList.remove('active');
+    document.getElementById('detailOverlay').classList.remove('active');
+}
+
+let currentZoom = 55;
+const wrapper = document.getElementById('tableWrapper');
+const slider = document.getElementById('zoomSlider');
+const zoomValue = document.getElementById('zoomValue');
+
+function setZoom(z) {
+    currentZoom = Math.max(30, Math.min(150, z));
+    wrapper.style.transform = `scale(${currentZoom / 100})`;
+    slider.value = currentZoom;
+    zoomValue.textContent = currentZoom + '%';
+}
+
+document.getElementById('zoomIn').addEventListener('click', () => setZoom(currentZoom + 5));
+document.getElementById('zoomOut').addEventListener('click', () => setZoom(currentZoom - 5));
+document.getElementById('zoomSlider').addEventListener('input', (e) => setZoom(parseInt(e.target.value)));
+document.getElementById('resetZoom').addEventListener('click', () => setZoom(55));
+document.getElementById('detailClose').addEventListener('click', closeDetail);
+document.getElementById('detailOverlay').addEventListener('click', closeDetail);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDetail(); });
+document.addEventListener('click', (e) => {
+    const card = e.target.closest('.element-card');
+    if (card) {
+        const z = parseInt(card.dataset.z);
+        let el = elements.find(x => x.z === z);
+        if (!el) el = lanthanides.find(x => x.z === z);
+        if (!el) el = actinides.find(x => x.z === z);
+        if (el) openDetail(el);
+    }
+});
+
+buildMainTable();
+buildSeries();
+setZoom(55);
+</script>
+</body>
+</html>
